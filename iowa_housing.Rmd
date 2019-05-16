@@ -1,0 +1,143 @@
+---
+title: "R Notebook for predicting Sales Prices of Houses in IOWA"
+output: html_notebook
+---
+
+```{r}
+library(tidyverse)
+#Reading Data in to a Data Frame
+iowa.df <- read.csv("iowa_data.csv",header = T)
+```
+
+```{r}
+summary(iowa.df)
+```
+#Transforming condition1 attribute from char to factor 
+```{r}
+iowa.df$Condition1 <- as.factor(iowa.df$Condition1)
+```
+
+
+#Fitting a decision tree to predict the sales prices of houses based on few attributes as followS:
+
+    * LotArea
+    * YearBuilt
+    * Condition1 (how close to the main road the house is)
+    * FullBath
+    * BedroomAbvGr
+    * TotRmsAbvGrd
+```{r}
+library(rpart)
+model.fit <- rpart(SalePrice ~ LotArea + YearBuilt + Condition1 +
+                   FullBath + BedroomAbvGr + TotRmsAbvGrd,data = iowa.df)
+```
+
+#Plot the decision tree using the model
+```{r}
+plot(model.fit,uniform = TRUE)
+#Overlay the text and make it 60 percent larger than usual
+text(model.fit,cex=.6)
+```
+
+#Make Predictions using the model
+```{r}
+predicted.values <- predict(model.fit,data = iowa.df)
+actual.values <- iowa.df$SalePrice
+
+results.df <- data.frame(actual = actual.values,predicted = predicted.values)
+head(results.df,10)
+
+```
+```{r}
+plot(results.df$actual,type = "o",col = "red", xlab = "Independent Variables", ylab = "SalesPrice", 
+   main = "Sales - Actual vs predictions Chart")
+
+lines(results.df$predicted, type = "o", col = "blue")
+```
+
+#Look for the Mean Absolute error of the model before partitioning it into test and train sets.
+```{r}
+library(modelr)
+mae(model.fit,data = iowa.df)
+
+```
+
+
+
+#Partitioning the data into test and train sets
+```{r}
+partitioned.df <- resample_partition(iowa.df,c(test= 0.3,train = 0.7))
+lapply(partitioned.df,dim)
+```
+
+#Fit another model on train data and make predictions on test data
+```{r}
+model.fit2 <- rpart(SalePrice ~ LotArea + YearBuilt + Condition1 +
+                   FullBath + BedroomAbvGr + TotRmsAbvGrd,data = partitioned.df$train)
+```
+
+#Predictions
+```{r}
+pred <- predict(model.fit2,data = partitioned.df$test)
+actual.df <- partitioned.df$train
+actual_data <- actual.df$data$SalePrice
+
+size <- length(pred)
+
+plot(actual_data[1:size],type = "o",col = "red", xlab = "Independent Variables", ylab = "SalesPrice", 
+   main = "Sales - Actual vs predictions Chart")
+
+lines(pred, type = "o", col = "blue")
+```
+
+```{r}
+mae(model = model.fit2,data = partitioned.df$test)
+```
+#Find the mae for different values to depth and find the best decision tree
+
+#Function to find the mae for different values of depth
+```{r}
+find_mae <- function(depth,target,predictor,train.data,test.data){
+  
+ predictors <-  paste(predictor,collapse = '+')
+ formula <- as.formula(paste(target,"~",predictors,sep = ""))
+ model.fit <- rpart(formula,data = train.data)
+ 
+ mae <- mae(model.fit,data = test.data)
+ 
+ return(mae)
+}
+```
+
+#Call the function for various values of depth
+```{r}
+
+y <- "SalePrice"
+x <- c("LotArea" ,"YearBuilt","Condition1","FullBath"," BedroomAbvGr","TotRmsAbvGrd")
+
+for(i in 1:10)
+{
+  mae <- find_mae(depth = i,target = y,predictor = x,
+                  train.data = partitioned.df$train,test.data = partitioned.df$test)
+  
+  print(glue::glue("Maxdepth: ",i,"\t MAE: ",mae))
+  
+}
+  
+ 
+
+  
+```
+
+#Fit a randomforest and look at the improvement in mae
+```{r}
+library(randomForest)
+randomforest.fit <- randomForest(SalePrice ~ LotArea + YearBuilt + Condition1 +
+                   FullBath + BedroomAbvGr + TotRmsAbvGrd,data = partitioned.df$train)
+```
+
+#MAE of the random forest model
+```{r}
+mae(randomforest.fit,data = partitioned.df$test)
+```
+
